@@ -58,6 +58,8 @@
 #define OPENIGTLINK_VERSION_PATCH @OpenIGTLink_VERSION_PATCH@
 #define OPENIGTLINK_VERSION "@OpenIGTLink_VERSION_MAJOR@.@OpenIGTLink_VERSION_MINOR@.@OpenIGTLink_VERSION_PATCH@"
 
+#cmakedefine PLUS_USE_POLHEMUS
+
 #cmakedefine PLUS_USE_3dConnexion_TRACKER
 #cmakedefine PLUS_USE_aruco
 #cmakedefine PLUS_USE_Ascension3DG

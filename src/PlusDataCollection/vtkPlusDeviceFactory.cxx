@@ -68,6 +68,9 @@ See License.txt for details.
 #ifdef PLUS_USE_Ascension3DGm
 #include "vtkAscension3DGmTracker.h"
 #endif
+#ifdef PLUS_USE_POLHEMUS
+#include "vtkPlusPolhemus.h"
+#endif
 #ifdef PLUS_USE_OPTIMET_CONOPROBE
 #include "vtkPlusOptimetConoProbeMeasurer.h"
 #endif
@@ -306,6 +309,9 @@ vtkPlusDeviceFactory::vtkPlusDeviceFactory()
 #endif
 #ifdef PLUS_USE_Ascension3DGm
     RegisterDevice("Ascension3DGm", "vtkAscension3DGmTracker", (PointerToDevice)&vtkAscension3DGmTracker::New);
+#endif
+#ifdef PLUS_USE_POLHEMUS
+    RegisterDevice("Polhemus", "vtkPlusPolhemus", (PointerToDevice)&vtkPlusPolhemus::New);
 #endif
 #ifdef PLUS_USE_PHIDGET_SPATIAL_TRACKER
     RegisterDevice("PhidgetSpatial", "vtkPlusPhidgetSpatialTracker", (PointerToDevice)&vtkPlusPhidgetSpatialTracker::New);
