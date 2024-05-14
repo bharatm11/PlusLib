@@ -15,6 +15,9 @@ See License.txt for details.
 #include "Pose.h"
 #include "pose_math.h"
 
+#define TX_BUF_SIZE 0x400
+#define RX_BUF_SIZE 0x400
+
 /*!
 \class vtkPlusPolhemus
 \brief Interface for the Polhemus EM tracker
@@ -130,6 +133,17 @@ private: // Functions.
   uint32_t numSensors(viper_usb *pvpr);
   uint32_t readSensors(viper_usb *pvpr);
   bool checkSensorChange();
+
+  int CmdUnits(CUnitsCfg& ucfg, viper_usb* pvpr);
+  int CmdHemi(CHemisphereCfg &hemicfg, viper_usb* pvpr);
+
+  const uint32_t CMD_DELAY = 200;
+  uint8_t g_txbuf[TX_BUF_SIZE];
+  int g_ntxcount;
+
+  uint8_t g_rxbuf[RX_BUF_SIZE];
+  int g_nrxcount;
+
   bool* sensor_state;
   Pose* data_storage;
 

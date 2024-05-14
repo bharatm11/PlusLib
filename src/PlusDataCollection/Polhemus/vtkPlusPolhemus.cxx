@@ -106,6 +106,34 @@ PlusStatus vtkPlusPolhemus::InternalConnect()
     #endif
   }
 
+  // Setting units to centimeters and quaternion
+  CUnitsCfg ucfg;
+  ucfg.Fill(POS_CM, ORI_QUATERNION);
+
+  // Setting Auto-Hemisphere
+  CHemisphereCfg hemicfg;
+  hemicfg.Fill(hemicfg.POS_X, true, true); // hemi, autohemi, autotrack
+
+  // Configure Units
+  if (CmdUnits(ucfg, &viper) == 0)
+  {
+    cout << "CmdUnits error" << endl;
+    // return 1;
+  }
+  else
+  {
+    cout << "Units set to CM, Quaternions " << endl;
+  }
+
+  if (CmdHemi(hemicfg, &viper) == 0)
+  {
+    cout << "Hemisphere Setting error" << endl;
+  }
+  else
+  {
+    cout << "Hemisphere Set" << endl;
+  }
+
   return PLUS_SUCCESS;
 }
 
@@ -344,10 +372,10 @@ uint32_t vtkPlusPolhemus::readSensors(viper_usb *pvpr)
     data_storage[sensor_index].x = (pfd + i)->pno.pos[0];
     data_storage[sensor_index].y = (pfd + i)->pno.pos[1];
     data_storage[sensor_index].z = (pfd + i)->pno.pos[2];
-    data_storage[sensor_index].quatX = (pfd + i)->pno.ori[0];
-    data_storage[sensor_index].quatY = (pfd + i)->pno.ori[1];
-    data_storage[sensor_index].quatZ = (pfd + i)->pno.ori[2];
-    data_storage[sensor_index].quatW = (pfd + i)->pno.ori[3];
+    data_storage[sensor_index].quatW = (pfd + i)->pno.ori[0];
+    data_storage[sensor_index].quatX = (pfd + i)->pno.ori[1];
+    data_storage[sensor_index].quatY = (pfd + i)->pno.ori[2];
+    data_storage[sensor_index].quatZ = (pfd + i)->pno.ori[3];
     printPnoRecord(pfd + i);
   }
   #ifdef debug
@@ -404,15 +432,6 @@ void vtkPlusPolhemus::printPnoRecord(SENFRAMEDATA *pfd)
   auto current_time = std::chrono::system_clock::now();
   std::time_t time_now = std::chrono::system_clock::to_time_t(current_time);
 
-  Pose curr_pose;
-  curr_pose.x = pfd->pno.pos[0];
-  curr_pose.y = pfd->pno.pos[1];
-  curr_pose.z = pfd->pno.pos[2];
-  curr_pose.quatX = pfd->pno.ori[0];
-  curr_pose.quatY = pfd->pno.ori[1];
-  curr_pose.quatZ = pfd->pno.ori[2];
-  curr_pose.quatW = pfd->pno.ori[3];
-
   std::cout << "Sensor: " << s.c_str() << std::endl
             << pfd->pno.pos[0] << "  " << pfd->pno.pos[1] << "  "
             << pfd->pno.pos[2] << "  " << pfd->pno.ori[0] << "  "
@@ -422,3 +441,76 @@ void vtkPlusPolhemus::printPnoRecord(SENFRAMEDATA *pfd)
 #endif
 }
 
+int vtkPlusPolhemus::CmdHemi(CHemisphereCfg &hemicfg, viper_usb* pvpr)
+{
+  int r = 0;
+  uint32_t sens = 0;
+  CVPcmd cmd;
+  cmd.Fill(0, CMD_HEMISPHERE, CMD_ACTION_SET, -1, 0, hemicfg, sizeof(HEMISPHERE_CONFIG));
+  cmd.Prepare(g_txbuf, g_ntxcount);
+
+
+  int nBytes = g_ntxcount;
+  uint8_t* pbuf = g_txbuf;
+
+  if (r = pvpr->usb_send_cmd(pbuf,nBytes))
+  {
+    std::cout << "Write CMD_ACTION_SET failed with error " << std::endl;
+  }
+  else
+  {
+    g_nrxcount = RX_BUF_SIZE;
+    r = pvpr->usb_rec_resp(g_rxbuf, g_nrxcount);
+
+    if (r == 0)
+    {
+
+      CFrameInfo fi(g_rxbuf, g_nrxcount);
+
+      if ((fi.cmd() != CMD_UNITS) || !(fi.IsAck()))
+      {
+        r = -1;
+      }
+    }
+  }
+  cout << r;
+  return r;
+
+}
+
+int vtkPlusPolhemus::CmdUnits(CUnitsCfg& ucfg, viper_usb* pvpr)
+{
+	int r = 0;
+
+	CVPcmd cmd;
+	cmd.Fill(0, CMD_UNITS, CMD_ACTION_SET, 0, 0, ucfg, sizeof(UNITS_CONFIG));
+	cmd.Prepare(g_txbuf, g_ntxcount);
+
+
+	int nBytes = g_ntxcount;
+	uint8_t* pbuf = g_txbuf;
+
+	if (r = pvpr->usb_send_cmd(pbuf,nBytes))
+	{
+		std::cout << "Write CMD_ACTION_SET failed with error " << std::endl;
+	}
+	else
+	{
+		g_nrxcount = RX_BUF_SIZE;
+		r = pvpr->usb_rec_resp(g_rxbuf, g_nrxcount);
+
+		if (r == 0)
+		{
+
+			CFrameInfo fi(g_rxbuf, g_nrxcount);
+
+			if ((fi.cmd() != CMD_UNITS) || !(fi.IsAck()))
+			{
+				r = -1;
+			}
+		}
+	}
+	cout << r;
+	return r;
+
+}
