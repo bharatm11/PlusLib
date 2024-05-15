@@ -1083,6 +1083,8 @@ ENDIF()
 #--------------------------------------------------------------------------
 # Polhemus EM tracker support
 IF( PLUS_USE_POLHEMUS )
+  SET(LIBUSB_INCLUDE_DIR "C:/D/PlusB-bin/Deps/libusb/include")
+  SET(LIBUSB_LIB "C:/D/PlusB-bin/Deps/libusb/MS64/dll/libusb-1.0.lib")
   SET(POLHEMUS_SRCS
     Polhemus/vtkPlusPolhemus.cxx
     Polhemus/viper_usb.cpp
@@ -1114,10 +1116,11 @@ IF( PLUS_USE_POLHEMUS )
 
   LIST(APPEND ${PROJECT_NAME}_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/Polhemus
+    ${LIBUSB_INCLUDE_DIR}
     )
 
   LIST(APPEND ${PROJECT_NAME}_LIBS
-    ${LIBUSB_LIBRARY}
+    ${LIBUSB_LIB}
     )
 ENDIF()
 
