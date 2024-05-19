@@ -124,12 +124,12 @@ PlusStatus vtkPlusPolhemus::InternalConnect()
   // Configure FTT mode for all sensors
   if (CmdFtt(fttcfg,&viper, ftt_sens)==0)
   {
-    //cout << "Cmd FTT error" << endl;
+    cout << "CmdFTT error" << endl;
     //return 1;
   }
   else
   {
-    cout << "FTT Sensor 1" << endl;
+    cout << "FTT Mode - " << FTTMode << endl;
   }
 
   // Configure Units
