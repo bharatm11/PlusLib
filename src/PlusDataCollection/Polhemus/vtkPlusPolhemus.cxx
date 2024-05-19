@@ -58,6 +58,8 @@ vtkPlusPolhemus::vtkPlusPolhemus()
   // Regularly poll for changes
   this->StartThreadForInternalUpdates = true;
   this->AcquisitionRate = 50;
+
+  this->FTTMode = 0;
 }
 
 //-------------------------------------------------------------------------
@@ -106,6 +108,10 @@ PlusStatus vtkPlusPolhemus::InternalConnect()
     #endif
   }
 
+  // Setting FTT Mode to on
+  CEnumCfg fttcfg;
+  fttcfg.Fill(FTTMode);
+
   // Setting units to centimeters and quaternion
   CUnitsCfg ucfg;
   ucfg.Fill(POS_CM, ORI_QUATERNION);
@@ -113,6 +119,18 @@ PlusStatus vtkPlusPolhemus::InternalConnect()
   // Setting Auto-Hemisphere
   CHemisphereCfg hemicfg;
   hemicfg.Fill(hemicfg.POS_X, true, true); // hemi, autohemi, autotrack
+
+  uint32_t ftt_sens = -1;
+  // Configure FTT mode for all sensors
+  if (CmdFtt(fttcfg,&viper, ftt_sens)==0)
+  {
+    //cout << "Cmd FTT error" << endl;
+    //return 1;
+  }
+  else
+  {
+    cout << "FTT Sensor 1" << endl;
+  }
 
   // Configure Units
   if (CmdUnits(ucfg, &viper) == 0)
@@ -223,6 +241,8 @@ PlusStatus vtkPlusPolhemus::ReadConfiguration(vtkXMLDataElement *rootConfigEleme
 
   XML_FIND_DEVICE_ELEMENT_REQUIRED_FOR_READING(deviceConfig, rootConfigElement);
 
+  XML_READ_SCALAR_ATTRIBUTE_OPTIONAL(int, FTTMode, deviceConfig);
+
   XML_FIND_NESTED_ELEMENT_REQUIRED(dataSourcesElement, deviceConfig, "DataSources");
 
   for (int toolIndex = 0; toolIndex < dataSourcesElement->GetNumberOfNestedElements(); toolIndex++)
@@ -273,6 +293,10 @@ PlusStatus vtkPlusPolhemus::ReadConfiguration(vtkXMLDataElement *rootConfigEleme
 PlusStatus vtkPlusPolhemus::WriteConfiguration(vtkXMLDataElement *rootConfigElement)
 {
   std::cout << "Write Configuration Called" << std::endl;
+  XML_FIND_DEVICE_ELEMENT_REQUIRED_FOR_WRITING(trackerConfig, rootConfigElement);
+
+  trackerConfig->SetIntAttribute("FTTMode", this->FTTMode());
+	
   return PLUS_SUCCESS;
 }
 
@@ -484,6 +508,45 @@ int vtkPlusPolhemus::CmdUnits(CUnitsCfg& ucfg, viper_usb* pvpr)
 
 	CVPcmd cmd;
 	cmd.Fill(0, CMD_UNITS, CMD_ACTION_SET, 0, 0, ucfg, sizeof(UNITS_CONFIG));
+	cmd.Prepare(g_txbuf, g_ntxcount);
+
+
+	int nBytes = g_ntxcount;
+	uint8_t* pbuf = g_txbuf;
+
+	if (r = pvpr->usb_send_cmd(pbuf,nBytes))
+	{
+		std::cout << "Write CMD_ACTION_SET failed with error " << std::endl;
+	}
+	else
+	{
+		g_nrxcount = RX_BUF_SIZE;
+		r = pvpr->usb_rec_resp(g_rxbuf, g_nrxcount);
+
+		if (r == 0)
+		{
+
+			CFrameInfo fi(g_rxbuf, g_nrxcount);
+
+			if ((fi.cmd() != CMD_UNITS) || !(fi.IsAck()))
+			{
+				r = -1;
+			}
+		}
+	}
+	cout << r;
+	return r;
+
+}
+
+
+int vtkPlusPolhemus::CmdFtt(CEnumCfg& fttcfg, viper_usb* pvpr, uint32_t num_sens)
+{
+	int r = 0;
+
+	CVPcmd cmd;
+  // using arg4 = -1 in cmd.Fill() to set all sensors!
+	cmd.Fill(0, CMD_FTT_MODE, CMD_ACTION_SET, num_sens,0, fttcfg, sizeof(FTTMODE_CONFIG));
 	cmd.Prepare(g_txbuf, g_ntxcount);
 
 
