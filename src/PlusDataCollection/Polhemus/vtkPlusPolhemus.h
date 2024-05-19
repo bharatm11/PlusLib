@@ -51,9 +51,13 @@ public:
   */
   PlusStatus InternalUpdate();
 
+  vtkGetMacro(FTTMode, int);
+
 protected:
   vtkPlusPolhemus();
   ~vtkPlusPolhemus();
+
+  vtkSetMacro(FTTMode, int);
 
   /*!
   Start the tracking system.  The tracking system is brought from its ground state into full tracking mode.
@@ -79,6 +83,8 @@ private: // Functions.
   uint32_t keep_reading_usb;
   uint32_t is_continuous;
   uint32_t num_sensors;
+
+  int FTTMode;
 
   viper_queue cmd_queue;
   viper_queue pno_queue;
@@ -136,6 +142,7 @@ private: // Functions.
 
   int CmdUnits(CUnitsCfg& ucfg, viper_usb* pvpr);
   int CmdHemi(CHemisphereCfg &hemicfg, viper_usb* pvpr);
+  int CmdFtt(CEnumCfg& fttcfg, viper_usb* pvpr, uint32_t ftt_sens);
 
   const uint32_t CMD_DELAY = 200;
   uint8_t g_txbuf[TX_BUF_SIZE];
