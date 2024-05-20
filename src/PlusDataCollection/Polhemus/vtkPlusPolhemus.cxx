@@ -108,49 +108,49 @@ PlusStatus vtkPlusPolhemus::InternalConnect()
     #endif
   }
 
-  // Setting FTT Mode to on
-  CEnumCfg fttcfg;
-  fttcfg.Fill(FTTMode);
+  // // Setting FTT Mode to on
+  // CEnumCfg fttcfg;
+  // fttcfg.Fill(FTTMode);
 
-  // Setting units to centimeters and quaternion
-  CUnitsCfg ucfg;
-  ucfg.Fill(POS_CM, ORI_QUATERNION);
+  // // Setting units to centimeters and quaternion
+  // CUnitsCfg ucfg;
+  // ucfg.Fill(POS_CM, ORI_QUATERNION);
 
-  // Setting Auto-Hemisphere
-  CHemisphereCfg hemicfg;
-  hemicfg.Fill(hemicfg.POS_X, true, true); // hemi, autohemi, autotrack
+  // // Setting Auto-Hemisphere
+  // CHemisphereCfg hemicfg;
+  // hemicfg.Fill(hemicfg.POS_X, true, true); // hemi, autohemi, autotrack
 
-  uint32_t ftt_sens = -1;
-  // Configure FTT mode for all sensors
-  if (CmdFtt(fttcfg,&viper, ftt_sens)==0)
-  {
-    cout << "CmdFTT error" << endl;
-    //return 1;
-  }
-  else
-  {
-    cout << "FTT Mode - " << FTTMode << endl;
-  }
+  // uint32_t ftt_sens = -1;
+  // // Configure FTT mode for all sensors
+  // if (CmdFtt(fttcfg,&viper, ftt_sens)==0)
+  // {
+  //   cout << "CmdFTT error" << endl;
+  //   //return 1;
+  // }
+  // else
+  // {
+  //   cout << "FTT Mode - " << FTTMode << endl;
+  // }
 
-  // Configure Units
-  if (CmdUnits(ucfg, &viper) == 0)
-  {
-    cout << "CmdUnits error" << endl;
-    // return 1;
-  }
-  else
-  {
-    cout << "Units set to CM, Quaternions " << endl;
-  }
+  // // Configure Units
+  // if (CmdUnits(ucfg, &viper) == 0)
+  // {
+  //   cout << "CmdUnits error" << endl;
+  //   // return 1;
+  // }
+  // else
+  // {
+  //   cout << "Units set to CM, Quaternions " << endl;
+  // }
 
-  if (CmdHemi(hemicfg, &viper) == 0)
-  {
-    cout << "Hemisphere Setting error" << endl;
-  }
-  else
-  {
-    cout << "Hemisphere Set" << endl;
-  }
+  // if (CmdHemi(hemicfg, &viper) == 0)
+  // {
+  //   cout << "Hemisphere Setting error" << endl;
+  // }
+  // else
+  // {
+  //   cout << "Hemisphere Set" << endl;
+  // }
 
   return PLUS_SUCCESS;
 }
@@ -295,7 +295,7 @@ PlusStatus vtkPlusPolhemus::WriteConfiguration(vtkXMLDataElement *rootConfigElem
   std::cout << "Write Configuration Called" << std::endl;
   XML_FIND_DEVICE_ELEMENT_REQUIRED_FOR_WRITING(trackerConfig, rootConfigElement);
 
-  trackerConfig->SetIntAttribute("FTTMode", this->FTTMode());
+  trackerConfig->SetIntAttribute("FTTMode", this->GetFTTMode());
 	
   return PLUS_SUCCESS;
 }
