@@ -78,19 +78,22 @@ private: // Functions.
   vtkPlusPolhemus(const vtkPlusPolhemus &);
   void operator=(const vtkPlusPolhemus &);
 
+  // Variables
+  int max_sensors;    // Maximum number of sensors that can be connected
+  uint32_t resp_size; // Max size of the entire packet returned from the port which includes all sensor values
+  int FTTMode;        // For more information on FTT mode, refer to the VIPER User Manual, page 19:
+                      // https://www.creact.co.jp/measure/mocap/viper/file/VIPER_User_Manual_URM18PH392-A.pdf
 
   viper_usb viper;
   uint32_t keep_reading_usb;
   uint32_t is_continuous;
   uint32_t num_sensors;
 
-  int FTTMode;
+  
 
   viper_queue cmd_queue;
   viper_queue pno_queue;
-  uint32_t resp_size;
   uint8_t *resp_pkg;
-  int max_sensors;
 
 
 
@@ -151,7 +154,7 @@ private: // Functions.
   uint8_t g_rxbuf[RX_BUF_SIZE];
   int g_nrxcount;
 
-  bool* sensor_state;
-  Pose* data_storage;
-
+  // Uninitialized length arrays
+  bool *sensor_state; // Create array to see which sensors are connected. True represents connected. Array when initialized is all false
+  Pose *data_storage; // Create array to store sensors values. This array is creted with maximum size with ports-1 as index. The ports not used are default value
 };

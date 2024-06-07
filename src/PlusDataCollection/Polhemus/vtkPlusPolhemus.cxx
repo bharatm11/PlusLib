@@ -36,7 +36,7 @@ vtkStandardNewMacro(vtkPlusPolhemus);
 //-------------------------------------------------------------------------
 vtkPlusPolhemus::vtkPlusPolhemus()
 {
-  std::cout << "Constructor Called" << std::endl;
+  LOG_DEBUG("Constructor Called");
   keep_reading_usb = 0;
   is_continuous = 0;
   cmd_queue.init(&keep_reading_usb);
@@ -44,28 +44,24 @@ vtkPlusPolhemus::vtkPlusPolhemus()
   
   // Maximum number of sensors that can be connected 
   max_sensors = 8;
-
-  // Create array to store sensors values. This array is creted with maximum size with ports-1 as index. The ports not used are default value
   data_storage = new Pose[max_sensors];
-
-  // Create array to see which sensors are connected. Intialize it to all false
   sensor_state = new bool[max_sensors];
   std::fill(sensor_state, sensor_state + max_sensors, false);
 
-  // Max size of the entire packet returned from the port which includes all sensor values
-  resp_size = sizeof(uint32_t) * 11 + sizeof(SENFRAMEDATA) * 16 + CRC_SIZE; // max no. of sensors
+  resp_size = sizeof(uint32_t) * 11 + sizeof(SENFRAMEDATA) * 16 + CRC_SIZE;
+
+  FTTMode = 0;
+
 
   // Regularly poll for changes
   this->StartThreadForInternalUpdates = true;
   this->AcquisitionRate = 50;
-
-  this->FTTMode = 0;
 }
 
 //-------------------------------------------------------------------------
 vtkPlusPolhemus::~vtkPlusPolhemus()
 {
-  std::cout << "Destructor Called" << std::endl;
+  LOG_DEBUG("Destructor Called");
   if (this->Recording)
   {
     this->StopRecording();
@@ -77,35 +73,35 @@ vtkPlusPolhemus::~vtkPlusPolhemus()
 //-------------------------------------------------------------------------
 PlusStatus vtkPlusPolhemus::InternalConnect()
 {
-  std::cout << "Internal Connect Called" << std::endl;
+  LOG_DEBUG("Internal Connect Called");
 
   // Connect to the port Viper EM is connected to
   if (this->viper.usb_connect() != 0)
   {
-    std::cout << RED << "\n\nError connecting to Viper over USB\nNode communication for EM tracker failed\n\n" << RESET << std::endl; 
+    LOG_ERROR("Error connecting to Viper over USB\nNode communication for EM tracker failed");
     return PLUS_FAIL;
   }
   else
   {
-    #ifdef debug
-    std::cout << GREEN << "\n\nConnected to Viper over USB\nNode communication for EM tracker successful\n\n" << RESET << std::endl;
-    #endif
+    LOG_INFO("Connected to Viper over USB\nNode communication for EM tracker successful");
   }
+
+  Sleep(1000);
 
   // Initialize the number of sensors. Also checks if there are less sensors than needed
   uint32_t rvNum = numSensors(&viper);
   if(rvNum != 0){
-    std::cout << RED << "Error reading number of sensors. CODE - " << rvNum << RESET << std::endl;
+    InternalDisconnect();
+    LOG_ERROR("Error reading number of sensors. CODE - " + std::to_string(rvNum));
     return PLUS_FAIL;
   }
   else if(std::count(sensor_state, sensor_state + max_sensors, true) > this->num_sensors){
-    std::cout << RED << "Error number of sensors in XML is more than number of sensors connected" << RESET << std::endl;
+    InternalDisconnect();
+    LOG_ERROR("Error number of sensors in XML is more than number of sensors connected");
     return PLUS_FAIL;
   }
   else{
-    #ifdef debug
-    std::cout << GREEN << "Number of sensors connected- " << this->num_sensors << RESET << std::endl;
-    #endif
+    LOG_INFO("Number of sensors connected- " + std::to_string(this->num_sensors));
   }
 
   // // Setting FTT Mode to on
@@ -158,7 +154,7 @@ PlusStatus vtkPlusPolhemus::InternalConnect()
 //-------------------------------------------------------------------------
 PlusStatus vtkPlusPolhemus::InternalDisconnect()
 {
-  std::cout << "Internal Disconnect Called" << std::endl;
+  LOG_DEBUG("Internal Disconnect Called");
   
   // Disconnect the usb device
   this->viper.usb_disconnect();
@@ -169,33 +165,30 @@ PlusStatus vtkPlusPolhemus::InternalDisconnect()
 //-------------------------------------------------------------------------
 PlusStatus vtkPlusPolhemus::InternalStartRecording()
 {
-  std::cout << "Internal Start Recording Called" << std::endl;
+  LOG_DEBUG("Internal Start Recording Called");
   return PLUS_SUCCESS;
 }
 
 //-------------------------------------------------------------------------
 PlusStatus vtkPlusPolhemus::InternalStopRecording()
 {
-  std::cout << "Internal Stop Recording Called" << std::endl;
+  LOG_DEBUG("Internal Stop Recording Called");
   return PLUS_SUCCESS;
 }
 
 //-------------------------------------------------------------------------
 PlusStatus vtkPlusPolhemus::InternalUpdate()
 {
-  #ifdef debug
-  std::cout << "Internal Update Called" << std::endl;
-  #endif
+  LOG_TRACE("Internal Update Called");
+
   // Get information about the sensors
   uint32_t rvRead = readSensors(&viper);
   if(rvRead != 0){
-    std::cout << RED << "Error Reading from the Sensors. CODE - " << rvRead << RESET << std::endl;
+    LOG_WARNING("Error reading number of sensors. CODE - " + std::to_string(rvRead));
     return PLUS_FAIL;
   }
   else{
-    #ifdef debug
-    std::cout << GREEN << "Success Reading from the Sensors" << RESET << std::endl;
-    #endif
+    LOG_TRACE("Success Reading from the Sensors");
   }
 
   // Iterate through the entire data_storage array and only check the sensors needed in the XML
@@ -217,7 +210,7 @@ PlusStatus vtkPlusPolhemus::InternalUpdate()
       vtkPlusDataSource *tool = NULL;
       if (this->GetToolByPortName(toolPortName.str().c_str(), tool) != PLUS_SUCCESS)
       {
-        std::cout << RED << "Unable to find tool on port: " << toolPortName.str() << RESET << std::endl;
+        LOG_TRACE("Unable to find tool on port: " + toolPortName.str());
         continue;
       }
 
@@ -237,7 +230,7 @@ PlusStatus vtkPlusPolhemus::InternalUpdate()
 //----------------------------------------------------------------------------
 PlusStatus vtkPlusPolhemus::ReadConfiguration(vtkXMLDataElement *rootConfigElement)
 {
-  std::cout << "Read Configuration Called" << std::endl;
+  LOG_DEBUG("Read Configuration Called");
 
   XML_FIND_DEVICE_ELEMENT_REQUIRED_FOR_READING(deviceConfig, rootConfigElement);
 
@@ -267,22 +260,17 @@ PlusStatus vtkPlusPolhemus::ReadConfiguration(vtkXMLDataElement *rootConfigEleme
       continue;
     }
 
-    #ifdef debug
-    std::cout << portName << "- Port Name" << std::endl;
-    #endif
-
     // Convert portName to an integer and populate the sensor_state array to reflect which port are required
     try
     {
       int portNumber = std::stoi(portName);
-      #ifdef debug
-      std::cout << "Port number: " << portNumber << std::endl;
-      #endif
+      LOG_DEBUG( "Port number: " + std::to_string(portNumber));
+
       sensor_state[portNumber-1] = true;
     }
     catch (const std::exception &e)
     {
-      std::cout << "Error: PortName should be an integer between 1-8" << std::endl;
+      LOG_WARNING("Error: PortName should be an integer between 1-8");
       return PLUS_FAIL;
     }
   }
@@ -292,7 +280,7 @@ PlusStatus vtkPlusPolhemus::ReadConfiguration(vtkXMLDataElement *rootConfigEleme
 //----------------------------------------------------------------------------
 PlusStatus vtkPlusPolhemus::WriteConfiguration(vtkXMLDataElement *rootConfigElement)
 {
-  std::cout << "Write Configuration Called" << std::endl;
+  LOG_DEBUG("Write Configuration Called");
   XML_FIND_DEVICE_ELEMENT_REQUIRED_FOR_WRITING(trackerConfig, rootConfigElement);
 
   trackerConfig->SetIntAttribute("FTTMode", this->GetFTTMode());
