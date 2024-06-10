@@ -1083,45 +1083,84 @@ ENDIF()
 #--------------------------------------------------------------------------
 # Polhemus EM tracker support
 IF( PLUS_USE_POLHEMUS )
-  SET(LIBUSB_INCLUDE_DIR "C:/D/PlusB-bin/Deps/libusb/include")
-  SET(LIBUSB_LIB "C:/D/PlusB-bin/Deps/libusb/MS64/dll/libusb-1.0.lib")
-  SET(POLHEMUS_SRCS
-    Polhemus/vtkPlusPolhemus.cxx
-    Polhemus/viper_usb.cpp
-    Polhemus/viper_queue.cpp
-    Polhemus/VPif.cpp
-    Polhemus/pose_math.cxx
-    )
+  IF(UNIX AND NOT MAC){
+    SET(POLHEMUS_SRCS
+      Polhemus/vtkPlusPolhemus.cxx
+      Polhemus/viper_usb.cpp
+      Polhemus/viper_queue.cpp
+      Polhemus/VPif.cpp
+      Polhemus/pose_math.cxx
+      )
+  
+    SET(POLHEMUS_HDRS
+      Polhemus/vtkPlusPolhemus.h
+      Polhemus/libusb.h
+      Polhemus/viper_usb.h
+      Polhemus/viper_queue.h
+      Polhemus/pose_math.h
+      Polhemus/Pose.h
+      Polhemus/ViperInterface.h
+      Polhemus/VPif.h
+  
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_HDRS
+      ${POLHEMUS_HDRS}
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_SRCS
+      ${POLHEMUS_SRCS}
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_INCLUDE_DIRS
+      ${CMAKE_CURRENT_SOURCE_DIR}/Polhemus
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_LIBS
+      ${LIBUSB_LIBRARY}
+      )
+  }
+  ELSEIF(NOT MAC){
+    SET(LIBUSB_INCLUDE_DIR "C:/D/PlusB-bin/Deps/libusb/include")
+    SET(LIBUSB_LIB "C:/D/PlusB-bin/Deps/libusb/MS64/dll/libusb-1.0.lib")
+    SET(POLHEMUS_SRCS
+      Polhemus/vtkPlusPolhemus.cxx
+      Polhemus/viper_usb.cpp
+      Polhemus/viper_queue.cpp
+      Polhemus/VPif.cpp
+      Polhemus/pose_math.cxx
+      )
+  
+    SET(POLHEMUS_HDRS
+      Polhemus/vtkPlusPolhemus.h
+      Polhemus/libusb.h
+      Polhemus/viper_usb.h
+      Polhemus/viper_queue.h
+      Polhemus/pose_math.h
+      Polhemus/Pose.h
+      Polhemus/ViperInterface.h
+      Polhemus/VPif.h
+  
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_HDRS
+      ${POLHEMUS_HDRS}
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_SRCS
+      ${POLHEMUS_SRCS}
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_INCLUDE_DIRS
+      ${CMAKE_CURRENT_SOURCE_DIR}/Polhemus
+      ${LIBUSB_INCLUDE_DIR}
+      )
+  
+    LIST(APPEND ${PROJECT_NAME}_LIBS
+      ${LIBUSB_LIB}
+      )
+  }
 
-  SET(POLHEMUS_HDRS
-    Polhemus/vtkPlusPolhemus.h
-    Polhemus/libusb.h
-    Polhemus/viper_usb.h
-    Polhemus/viper_queue.h
-    Polhemus/pose_math.h
-    Polhemus/Pose.h
-    Polhemus/ViperInterface.h
-    # Polhemus/VipercmdDefs.h
-    Polhemus/VPif.h
-
-    )
-
-  LIST(APPEND ${PROJECT_NAME}_HDRS
-    ${POLHEMUS_HDRS}
-    )
-
-  LIST(APPEND ${PROJECT_NAME}_SRCS
-    ${POLHEMUS_SRCS}
-    )
-
-  LIST(APPEND ${PROJECT_NAME}_INCLUDE_DIRS
-    ${CMAKE_CURRENT_SOURCE_DIR}/Polhemus
-    ${LIBUSB_INCLUDE_DIR}
-    )
-
-  LIST(APPEND ${PROJECT_NAME}_LIBS
-    ${LIBUSB_LIB}
-    )
 ENDIF()
 
 
