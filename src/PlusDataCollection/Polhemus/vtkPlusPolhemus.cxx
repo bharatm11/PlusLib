@@ -86,8 +86,12 @@ PlusStatus vtkPlusPolhemus::InternalConnect()
     LOG_INFO("Connected to Viper over USB\nNode communication for EM tracker successful");
   }
 
-  Sleep(1000);
-
+  #ifdef _WIN32
+    Sleep(1000);
+  #else
+    usleep(1000);
+  #endif
+  
   // Initialize the number of sensors. Also checks if there are less sensors than needed
   uint32_t rvNum = numSensors(&viper);
   if(rvNum != 0){
