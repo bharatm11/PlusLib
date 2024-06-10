@@ -1080,18 +1080,19 @@ IF( PLUS_USE_Ascension3DGm )
     )
 ENDIF()
 
+
 #--------------------------------------------------------------------------
 # Polhemus EM tracker support
 IF( PLUS_USE_POLHEMUS )
-  IF(UNIX AND NOT MAC){
+  IF(UNIX AND NOT MAC)
     SET(POLHEMUS_SRCS
       Polhemus/vtkPlusPolhemus.cxx
       Polhemus/viper_usb.cpp
       Polhemus/viper_queue.cpp
       Polhemus/VPif.cpp
       Polhemus/pose_math.cxx
-      )
-  
+    )
+
     SET(POLHEMUS_HDRS
       Polhemus/vtkPlusPolhemus.h
       Polhemus/libusb.h
@@ -1101,26 +1102,25 @@ IF( PLUS_USE_POLHEMUS )
       Polhemus/Pose.h
       Polhemus/ViperInterface.h
       Polhemus/VPif.h
-  
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_HDRS
       ${POLHEMUS_HDRS}
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_SRCS
       ${POLHEMUS_SRCS}
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_INCLUDE_DIRS
       ${CMAKE_CURRENT_SOURCE_DIR}/Polhemus
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_LIBS
       ${LIBUSB_LIBRARY}
-      )
-  }
-  ELSEIF(NOT MAC){
+    )
+
+  ELSEIF(NOT MAC)
     SET(LIBUSB_INCLUDE_DIR "C:/D/PlusB-bin/Deps/libusb/include")
     SET(LIBUSB_LIB "C:/D/PlusB-bin/Deps/libusb/MS64/dll/libusb-1.0.lib")
     SET(POLHEMUS_SRCS
@@ -1129,8 +1129,8 @@ IF( PLUS_USE_POLHEMUS )
       Polhemus/viper_queue.cpp
       Polhemus/VPif.cpp
       Polhemus/pose_math.cxx
-      )
-  
+    )
+
     SET(POLHEMUS_HDRS
       Polhemus/vtkPlusPolhemus.h
       Polhemus/libusb.h
@@ -1140,27 +1140,25 @@ IF( PLUS_USE_POLHEMUS )
       Polhemus/Pose.h
       Polhemus/ViperInterface.h
       Polhemus/VPif.h
-  
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_HDRS
       ${POLHEMUS_HDRS}
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_SRCS
       ${POLHEMUS_SRCS}
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_INCLUDE_DIRS
       ${CMAKE_CURRENT_SOURCE_DIR}/Polhemus
       ${LIBUSB_INCLUDE_DIR}
-      )
-  
+    )
+
     LIST(APPEND ${PROJECT_NAME}_LIBS
       ${LIBUSB_LIB}
-      )
-  }
-
+    )
+  ENDIF()
 ENDIF()
 
 
