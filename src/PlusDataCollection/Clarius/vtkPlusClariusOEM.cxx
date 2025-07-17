@@ -141,6 +141,18 @@ namespace
 
   static const bool DEFAULT_FREEZE_ON_POOR_WIFI_SIGNAL = true;
 
+  static const bool DEFAULT_KEEP_AWAKE_CHARGING = true;
+
+  static const bool DEFAULT_POWER_BUTTONS_ENABLED = true;
+
+  static const bool DEFAULT_SOUND_ENABLED = true;
+
+  static const int DEFAULT_STATIONARY_TIMEOUT_SEC = 0;
+
+  static const bool DEFAULT_WAKE_ON_SHAKE = false;
+
+  static const bool DEFAULT_FORCE_LOG_SEND = false;
+
   static const bool DEFAULT_PENETRATION_MODE_ENABLED = false;
 
   static const int DEFAULT_CONTACT_DETECTION_TIMEOUT_SEC = 15;
@@ -148,6 +160,8 @@ namespace
   static const int DEFAULT_AUTO_FREEZE_TIMEOUT_SEC = 60;
 
   static const int DEFAULT_KEEP_AWAKE_TIMEOUT_SEC = 60;
+
+  static const int DEFAULT_DEEP_SLEEP_TIMEOUT_HR = 0;
 
   static const BUTTON_MODE DEFAULT_UP_BUTTON_MODE = BUTTON_MODE::DISABLED;
 
@@ -217,7 +231,7 @@ protected:
 
   static void ProgressFn(int progress);
 
-  static void ErrorFn(const char* msg);
+  static void ErrorFn(CusErrorCode errorCode, const char* msg);
 
   std::string ImagingModeToString(int mode)
   {
@@ -247,10 +261,17 @@ protected:
   bool EnableAutoGain;
   bool Enable5v;
   bool FreezeOnPoorWifiSignal;
+  bool KeepAwakeCharging;
+  bool PowerButtonsEnabled;
+  bool SoundEnabled;
+  int StationaryTimeoutSec;
+  bool WakeOnShake;
+  bool ForceLogSend;
   bool EnablePenetrationMode;
   int ContactDetectionTimeoutSec;
   int AutoFreezeTimeoutSec;
   int KeepAwakeTimeoutMin;
+  int DeepSleepTimeoutHr;
   BUTTON_MODE UpButtonMode;
   BUTTON_MODE DownButtonMode;
   int ImagingMode;
@@ -289,6 +310,9 @@ protected:
     UNKNOWN
   } ExpectedList;
 
+  std::string SoftwareUpdateFilename;
+  int SoftwareUpdateHardwareVersion{ 0 };
+
 private:
   vtkPlusClariusOEM* External;
 
@@ -310,10 +334,17 @@ vtkPlusClariusOEM::vtkInternal::vtkInternal(vtkPlusClariusOEM* ext)
   , EnableAutoGain(DEFAULT_ENABLE_AUTO_GAIN)
   , Enable5v(DEFAULT_ENABLE_5V_RAIL)
   , FreezeOnPoorWifiSignal(DEFAULT_FREEZE_ON_POOR_WIFI_SIGNAL)
+  , KeepAwakeCharging(DEFAULT_KEEP_AWAKE_CHARGING)
+  , PowerButtonsEnabled(DEFAULT_POWER_BUTTONS_ENABLED)
+  , SoundEnabled(DEFAULT_SOUND_ENABLED)
+  , StationaryTimeoutSec(DEFAULT_STATIONARY_TIMEOUT_SEC)
+  , WakeOnShake(DEFAULT_WAKE_ON_SHAKE)
+  , ForceLogSend(DEFAULT_FORCE_LOG_SEND)
   , EnablePenetrationMode(DEFAULT_PENETRATION_MODE_ENABLED)
   , ContactDetectionTimeoutSec(DEFAULT_CONTACT_DETECTION_TIMEOUT_SEC)
   , AutoFreezeTimeoutSec(DEFAULT_AUTO_FREEZE_TIMEOUT_SEC)
   , KeepAwakeTimeoutMin(DEFAULT_KEEP_AWAKE_TIMEOUT_SEC)
+  , DeepSleepTimeoutHr(DEFAULT_DEEP_SLEEP_TIMEOUT_HR)
   , UpButtonMode(DEFAULT_UP_BUTTON_MODE)
   , DownButtonMode(DEFAULT_DOWN_BUTTON_MODE)
   , ImagingMode(CusMode::BMode)
@@ -355,29 +386,34 @@ void vtkPlusClariusOEM::vtkInternal::ListFn(const char* list, int sz)
 //-------------------------------------------------------------------------------------------------
 void vtkPlusClariusOEM::vtkInternal::ConnectFn(CusConnection ret, int port, const char* status)
 {
+  vtkPlusClariusOEM* device = vtkPlusClariusOEM::GetInstance();
+
   switch (ret)
   {
   case ConnectionError:
-    LOG_INFO("Connection status: error");
+    LOG_ERROR("Connection status: error - " << status);
+    device->Disconnect();
     break;
   case ProbeConnected:
-    LOG_INFO("Connection status: probe connected");
+    LOG_INFO("Connection status: probe connected - " << status);
     break;
   case ProbeDisconnected:
-    LOG_INFO("Connection status: probe disconnected");
+    LOG_INFO("Connection status: probe disconnected - " << status);
+    device->Disconnect();
     break;
   case ConnectionFailed:
-    LOG_INFO("Connection status: connection failed");
+    LOG_ERROR("Connection status: connection failed - " << status);
+    device->Disconnect();
     break;
   case SwUpdateRequired:
-    LOG_INFO("Connection status: software update required");
+    LOG_INFO("Connection status: software update required - " << status);
+    device->Disconnect();
     break;
   }
 
   if (ret == CusConnection::ProbeConnected)
   {
     // connection succeeded, set Internal->Connected variable to end busy wait in InternalConnect
-    vtkPlusClariusOEM* device = vtkPlusClariusOEM::GetInstance();
     device->Internal->ConnectionBarrier.set_value();
   }
 }
@@ -438,7 +474,33 @@ void vtkPlusClariusOEM::vtkInternal::PowerDownFn(CusPowerDown ret, int tm)
 //-------------------------------------------------------------------------------------------------
 void vtkPlusClariusOEM::vtkInternal::SwUpdateFn(CusSwUpdate ret)
 {
-  LOG_ERROR("Clarius SwUpdateFn callback was called, but this feature is not supported by PLUS. Please update using the Clarius iOS/Android App");
+  vtkPlusClariusOEM* device = vtkPlusClariusOEM::GetInstance();
+
+  switch (ret)
+  {
+  case SwUpdateError:
+    LOG_ERROR("Clarius software update failed");
+    break;
+  case SwUpdateSuccess:
+    LOG_INFO("Clarius software update was successful");
+    break;
+  case SwUpdateCurrent:
+    LOG_INFO("Clarius software is current, no update required");
+    break;
+  case SwUpdateBattery:
+    LOG_WARNING("Clarius software update failed due to low battery, please charge the probe and try again");
+    break;
+  case SwUpdateUnsupported:
+    LOG_ERROR("Clarius software update failed because the firmware being sent is not longer supported by the probe");
+    break;
+  case SwUpdateCorrupt:
+    LOG_ERROR("Clarius software update failed because the probe file system may be corrupt, please contact Clarius support for assistance");
+    break;
+  default:
+    LOG_ERROR("Clarius software update callback received an unknown status: " << ret);
+  }
+
+  device->InternalDisconnect();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -462,13 +524,21 @@ void vtkPlusClariusOEM::vtkInternal::ImuDataFn(const CusPosInfo* pos)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::InternalUpdate()
 {
-  this->UpdateProbeStatus();
+  if (this->UpdateProbeStatus() != PLUS_SUCCESS)
+  {
+    LOG_ERROR("Failed to update probe status");
+  }
   return PLUS_SUCCESS;
 }
 
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::UpdateProbeStatus()
 {
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
+  {
+    return PLUS_SUCCESS;
+  }
+
   if (solumStatusInfo(&this->Internal->CurrentStatus) != 0)
   {
     LOG_ERROR("Failed to retrieve solumStatusInfo");
@@ -490,8 +560,6 @@ void vtkPlusClariusOEM::vtkInternal::ProcessedImageFn(const void* oemImage, cons
   // check if still connected
   if (!device->Connected)
   {
-    LOG_ERROR("ClariusOEM device unexpectedly disconnected from Clarius Device. IpAddress = " << device->Internal->IpAddress
-      << " Port = " << device->Internal->TcpPort);
     return;
   }
 
@@ -650,15 +718,15 @@ void vtkPlusClariusOEM::vtkInternal::ImagingFn(CusImagingState ready, int imagin
   }
   else if (ready == CusImagingState::PoorWifi)
   {
-    LOG_WARNING("Clarius stopped imaging as a result of a poor Wi-Fi connection");
+    LOG_WARNING("Clarius imaging stopped as a result of a poor Wi-Fi connection");
   }
   else if (ready == CusImagingState::NoContact)
   {
-    LOG_INFO("Clarius stopped imaging as a result of no patient contact for specified timeout duration");
+    LOG_INFO("Clarius imaging stopped as a result of no patient contact for specified timeout duration");
   }
   else if (ready == CusImagingState::ChargingChanged)
   {
-    LOG_WARNING("Clarius started / stopped imaging due to a change in charging status");
+    LOG_WARNING("Clarius imaging " << (imaging ? "started" : "stopped") << " due to a change in charging status");
   }
   else if (ready == CusImagingState::LowBandwidth)
   {
@@ -666,7 +734,7 @@ void vtkPlusClariusOEM::vtkInternal::ImagingFn(CusImagingState ready, int imagin
   }
   else if (ready == CusImagingState::MotionSensor)
   {
-    LOG_INFO("Clarius started running or stopped due to change in motion sensor");
+    LOG_INFO("Clarius imaging " << (imaging ? "started" : "stopped") << " due to change in motion sensor");
   }
   else
   {
@@ -719,16 +787,46 @@ void vtkPlusClariusOEM::vtkInternal::ButtonFn(CusButton btn, int clicks)
  * @pram[in] progress the readback process*/
 void vtkPlusClariusOEM::vtkInternal::ProgressFn(int progress)
 {
-  LOG_INFO("Downloading: " << progress << "%");
+  LOG_INFO("Updating: " << progress << "%");
 }
 
 //-------------------------------------------------------------------------------------------------
 /*! callback for error messages
  * @param[in] err the error message sent from the listener module
  * */
-void vtkPlusClariusOEM::vtkInternal::ErrorFn(const char* err)
+void vtkPlusClariusOEM::vtkInternal::ErrorFn(CusErrorCode errorCode, const char* err)
 {
-  LOG_ERROR("A Clarius OEM error occurred. Error text was: " << err);
+  std::stringstream errorSS;
+  errorSS << "Clarius OEM ";
+  switch (errorCode)
+  {
+  case ErrorGeneric:
+    errorSS << "generic error";
+    break;
+  case ErrorSetup:
+    errorSS << "setup error";
+    break;
+  case ErrorProbe:
+    errorSS << "probe error";
+    break;
+  case ErrorApplication:
+    errorSS << "application load error";
+    break;
+  case ErrorSwUpdate:
+    errorSS << "software update error";
+    break;
+  case ErrorGl:
+    errorSS << "GL error";
+    break;
+  case ErrorRawData:
+    errorSS << "raw data error";
+    break;
+  default:
+    errorSS << "unknown error code" << errorCode;
+    break;
+  }
+  errorSS << ": " << err;
+  LOG_ERROR(errorSS.str());
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -745,6 +843,12 @@ void vtkPlusClariusOEM::vtkInternal::LogUserSettings()
   ss << "Enable5v: " << (this->Enable5v ? "TRUE" : "FALSE") << std::endl;
   ss << "EnablePenetrationMode: " << (this->EnablePenetrationMode ? "TRUE" : "FALSE") << std::endl;
   ss << "FreezeOnPoorWifiSignal: " << (this->FreezeOnPoorWifiSignal ? "TRUE" : "FALSE") << std::endl;
+  ss << "KeepAwakeCharging: " << (this->KeepAwakeCharging ? "TRUE" : "FALSE") << std::endl;
+  ss << "PowerButtonsEnabled: " << (this->PowerButtonsEnabled ? "TRUE" : "FALSE") << std::endl;
+  ss << "SoundEnabled: " << (this->SoundEnabled ? "TRUE" : "FALSE") << std::endl;
+  ss << "StationaryTimeoutSec: " << this->StationaryTimeoutSec << std::endl;
+  ss << "WakeOnShake: " << (this->WakeOnShake ? "TRUE" : "FALSE") << std::endl;
+  ss << "ForceLogSend: " << (this->ForceLogSend ? "TRUE" : "FALSE") << std::endl;
   ss << "EnablePenetrationMode: " << (this->EnablePenetrationMode ? "TRUE" : "FALSE") << std::endl;
   ss << "ContactDetectionTimeoutSec: " << this->ContactDetectionTimeoutSec << std::endl;
   ss << "AutoFreezeTimeoutSec: " << this->AutoFreezeTimeoutSec << std::endl;
@@ -832,6 +936,12 @@ void vtkPlusClariusOEM::PrintSelf(ostream& os, vtkIndent indent)
   os << indent << "EnableAutoGain: " << (this->Internal->EnableAutoGain ? "TRUE" : "FALSE") << std::endl;
   os << indent << "Enable5v: " << (this->Internal->Enable5v ? "TRUE" : "FALSE") << std::endl;
   os << indent << "FreezeOnPoorWifiSignal: " << (this->Internal->FreezeOnPoorWifiSignal ? "TRUE" : "FALSE") << std::endl;
+  os << indent << "KeepAwakeCharging: " << (this->Internal->KeepAwakeCharging ? "TRUE" : "FALSE") << std::endl;
+  os << indent << "PowerButtonsEnabled: " << (this->Internal->PowerButtonsEnabled ? "TRUE" : "FALSE") << std::endl;
+  os << indent << "SoundEnabled: " << (this->Internal->SoundEnabled ? "TRUE" : "FALSE") << std::endl;
+  os << indent << "StationaryTimeoutSec: " << this->Internal->StationaryTimeoutSec << std::endl;
+  os << indent << "WakeOnShake: " << (this->Internal->WakeOnShake ? "TRUE" : "FALSE") << std::endl;
+  os << indent << "ForceLogSend: " << (this->Internal->ForceLogSend ? "TRUE" : "FALSE") << std::endl;
   os << indent << "EnablePenetrationMode: " << (this->Internal->EnablePenetrationMode ? "TRUE" : "FALSE") << std::endl;
   os << indent << "ContactDetectionTimeoutSec: " << this->Internal->ContactDetectionTimeoutSec << std::endl;
   os << indent << "AutoFreezeTimeoutSec: " << this->Internal->AutoFreezeTimeoutSec << std::endl;
@@ -903,6 +1013,30 @@ PlusStatus vtkPlusClariusOEM::ReadConfiguration(vtkXMLDataElement* rootConfigEle
   XML_READ_BOOL_ATTRIBUTE_NONMEMBER_OPTIONAL(FreezeOnPoorWifiSignal,
     this->Internal->FreezeOnPoorWifiSignal, deviceConfig);
 
+  // keep awake when charging
+  XML_READ_BOOL_ATTRIBUTE_NONMEMBER_OPTIONAL(KeepAwakeCharging,
+    this->Internal->KeepAwakeCharging, deviceConfig);
+
+  // power buttons enabled
+  XML_READ_BOOL_ATTRIBUTE_NONMEMBER_OPTIONAL(PowerButtonsEnabled,
+    this->Internal->PowerButtonsEnabled, deviceConfig);
+
+  // sound enabled
+  XML_READ_BOOL_ATTRIBUTE_NONMEMBER_OPTIONAL(SoundEnabled,
+    this->Internal->SoundEnabled, deviceConfig);
+
+  // freeze when probe is stationary for a specified duration
+  XML_READ_SCALAR_ATTRIBUTE_NONMEMBER_OPTIONAL(int, StationaryTimeoutSec,
+    this->Internal->StationaryTimeoutSec, deviceConfig);
+
+  // wake on shake
+  XML_READ_BOOL_ATTRIBUTE_NONMEMBER_OPTIONAL(WakeOnShake,
+    this->Internal->WakeOnShake, deviceConfig);
+
+  // force log send
+  XML_READ_BOOL_ATTRIBUTE_NONMEMBER_OPTIONAL(ForceLogSend,
+    this->Internal->ForceLogSend, deviceConfig);
+
   // penetration mode enabled
   XML_READ_BOOL_ATTRIBUTE_NONMEMBER_OPTIONAL(EnablePenetrationMode,
     this->Internal->EnablePenetrationMode, deviceConfig);
@@ -918,6 +1052,10 @@ PlusStatus vtkPlusClariusOEM::ReadConfiguration(vtkXMLDataElement* rootConfigEle
   // keep awake timeout (seconds)
   XML_READ_SCALAR_ATTRIBUTE_NONMEMBER_OPTIONAL(int, KeepAwakeTimeoutMin,
     this->Internal->KeepAwakeTimeoutMin, deviceConfig);
+
+  // deep sleep timeout (hours)
+  XML_READ_SCALAR_ATTRIBUTE_NONMEMBER_OPTIONAL(int, DeepSleepTimeoutHr,
+    this->Internal->DeepSleepTimeoutHr, deviceConfig);
 
   // up button mode
   XML_READ_ENUM3_ATTRIBUTE_NONMEMBER_OPTIONAL(UpButtonMode,
@@ -997,6 +1135,11 @@ PlusStatus vtkPlusClariusOEM::ReadConfiguration(vtkXMLDataElement* rootConfigEle
       }
     }
   }
+
+  XML_READ_STRING_ATTRIBUTE_NONMEMBER_OPTIONAL(
+    SoftwareUpdateFilename, this->Internal->SoftwareUpdateFilename, deviceConfig);
+  XML_READ_SCALAR_ATTRIBUTE_NONMEMBER_OPTIONAL(
+    int, SoftwareUpdateHardwareVersion, this->Internal->SoftwareUpdateHardwareVersion, deviceConfig);
 
   // set vtkInternal pointer to b-mode data source
   this->GetVideoSourcesByPortName(vtkPlusDevice::BMODE_PORT_NAME, this->Internal->BModeSources);
@@ -1098,10 +1241,10 @@ PlusStatus vtkPlusClariusOEM::InitializeBLE()
 
     // print list of nearby active probes
     std::stringstream ss;
-    ss << "Clarius probes configured with Windows Bluetooth are:\n";
+    ss << "Clarius probes configured with Windows Bluetooth are:" << std::endl;
     for (const std::string& probe : probes)
     {
-      ss << "\t" << probe << "\n";
+      ss << "\t" << probe << std::endl;
     }
     LOG_ERROR(ss.str());
     return PLUS_FAIL;
@@ -1175,15 +1318,15 @@ PlusStatus vtkPlusClariusOEM::InitializeProbe()
   else
   {
     std::stringstream infoStream;
-    infoStream << "\tAvailable: " << to_string(info.Available) << "\n";
-    infoStream << "\tWifi Mode: " << to_string(info.WifiMode) << "\n";
-    infoStream << "\tSSID: " << info.SSID << "\n";
-    infoStream << "\tPassword: " << info.Password << "\n";
-    infoStream << "\tIPv4: " << info.IPv4 << "\n";
-    infoStream << "\tMac Address: " << info.MacAddress << "\n";
-    infoStream << "\tControl Port: " << info.ControlPort << "\n";
-    infoStream << "\tCast Port: " << info.CastPort << "\n";
-    infoStream << "\tChannel: " << info.Channel << "\n";
+    infoStream << "\tAvailable: " << to_string(info.Available) << std::endl;
+    infoStream << "\tWifi Mode: " << to_string(info.WifiMode) << std::endl;
+    infoStream << "\tSSID: " << info.SSID << std::endl;
+    infoStream << "\tPassword: " << info.Password << std::endl;
+    infoStream << "\tIPv4: " << info.IPv4 << std::endl;
+    infoStream << "\tMac Address: " << info.MacAddress << std::endl;
+    infoStream << "\tControl Port: " << info.ControlPort << std::endl;
+    infoStream << "\tCast Port: " << info.CastPort << std::endl;
+    infoStream << "\tChannel: " << info.Channel << std::endl;
 
     LOG_INFO("Clarius Wifi Info: " << std::endl << infoStream.str());
 
@@ -1254,14 +1397,12 @@ PlusStatus vtkPlusClariusOEM::InitializeOEM()
   CusConnectFn connectFnPtr = static_cast<CusConnectFn>(&vtkPlusClariusOEM::vtkInternal::ConnectFn);
   CusCertFn certFnPtr = static_cast<CusCertFn>(&vtkPlusClariusOEM::vtkInternal::CertFn);
   CusPowerDownFn powerDownFnPtr = static_cast<CusPowerDownFn>(&vtkPlusClariusOEM::vtkInternal::PowerDownFn);
-  CusSwUpdateFn swUpdateFnPtr = static_cast<CusSwUpdateFn>(&vtkPlusClariusOEM::vtkInternal::SwUpdateFn);
   CusNewRawImageFn newRawImageFnPtr = static_cast<CusNewRawImageFn>(&vtkPlusClariusOEM::vtkInternal::RawImageFn);
   CusNewProcessedImageFn newProcessedImageFnPtr = static_cast<CusNewProcessedImageFn>(&vtkPlusClariusOEM::vtkInternal::ProcessedImageFn);
   CusNewSpectralImageFn newSpectralImageFnPtr = static_cast<CusNewSpectralImageFn>(&vtkPlusClariusOEM::vtkInternal::SpectralImageFn);
   CusNewImuDataFn newImuDataFnPtr = static_cast<CusNewImuDataFn>(&vtkPlusClariusOEM::vtkInternal::ImuDataFn);
   CusImagingFn imagingFnPtr = static_cast<CusImagingFn>(&vtkPlusClariusOEM::vtkInternal::ImagingFn);
   CusButtonFn buttonFnPtr = static_cast<CusButtonFn>(&vtkPlusClariusOEM::vtkInternal::ButtonFn);
-  CusProgressFn progressFnPtr = static_cast<CusProgressFn>(&vtkPlusClariusOEM::vtkInternal::ProgressFn);
   CusErrorFn errorFnPtr = static_cast<CusErrorFn>(&vtkPlusClariusOEM::vtkInternal::ErrorFn);
 
   // no b-mode data sources, disable b mode callback
@@ -1283,23 +1424,30 @@ PlusStatus vtkPlusClariusOEM::InitializeOEM()
   try
   {
     FrameSizeType fs = this->Internal->FrameSize;
-    int result = solumInit(
-      argc,
-      argv,
-      certPath,
-      connectFnPtr,
-      certFnPtr,
-      powerDownFnPtr,
-      newProcessedImageFnPtr,
-      newRawImageFnPtr,
-      newSpectralImageFnPtr,
-      newImuDataFnPtr,
-      imagingFnPtr,
-      buttonFnPtr,
-      errorFnPtr,
-      fs[0],
-      fs[1]
-    );
+    CusInitParams initParams;
+    initParams.storeDir = certPath;
+    initParams.connectFn = connectFnPtr;
+    initParams.certFn = certFnPtr;
+    initParams.powerDownFn = powerDownFnPtr;
+    initParams.newRawImageFn = newRawImageFnPtr;
+    initParams.newProcessedImageFn = newProcessedImageFnPtr;
+    initParams.newSpectralImageFn = newSpectralImageFnPtr;
+    initParams.newImuDataFn = newImuDataFnPtr;
+    initParams.imagingFn = imagingFnPtr;
+    initParams.buttonFn = buttonFnPtr;
+    initParams.errorFn = errorFnPtr;
+    initParams.newImuPortFn = nullptr;
+    initParams.newImuDataFn = nullptr;
+    initParams.width = fs[0];
+    initParams.height = fs[1];
+
+    CusInitParams::Args initArgs;
+    initArgs.argc = argc;
+    initArgs.argv = argv;
+    initParams.args = initArgs;
+
+    int result = solumInit(&initParams);
+
     std::this_thread::sleep_for(std::chrono::milliseconds(CLARIUS_LONG_DELAY_MS));
 
     if (result < 0)
@@ -1367,7 +1515,10 @@ PlusStatus vtkPlusClariusOEM::ConfigureProbeApplication()
   std::future<void> connectionBarrierFuture = this->Internal->ConnectionBarrier.get_future();
   try
   {
-    int result = solumConnect(ip, port);
+    CusConnectionParams connParams;
+    connParams.ipAddress = ip;
+    connParams.port = port;
+    int result = solumConnect(&connParams);
     if (result != CusConnection::ProbeConnected)
     {
       LOG_ERROR("Failed to initiate connection to Clarius probe on " << ip << ":" << port <<
@@ -1588,9 +1739,21 @@ PlusStatus vtkPlusClariusOEM::InternalConnect()
   settings.contactDetection = this->Internal->ContactDetectionTimeoutSec;
   settings.autoFreeze = this->Internal->AutoFreezeTimeoutSec;
   settings.keepAwake = this->Internal->KeepAwakeTimeoutMin;
+  settings.deepSleep = this->Internal->DeepSleepTimeoutHr;
+  settings.stationary = this->Internal->StationaryTimeoutSec;
   settings.wifiOptimization = this->Internal->FreezeOnPoorWifiSignal;
+  // settings.wifiSearch
+  // settings.htWifi
+  settings.keepAwakeCharging = this->Internal->KeepAwakeCharging;
+  settings.powerOn = this->Internal->PowerButtonsEnabled;
+  settings.sounds = this->Internal->SoundEnabled;
+  settings.wakeOnShake = this->Internal->WakeOnShake;
+  // settings.bandwidthOptimization
+  settings.forceLogSend = this->Internal->ForceLogSend;
   settings.up = static_cast<CusButtonSetting>(this->Internal->UpButtonMode);
   settings.down = static_cast<CusButtonSetting>(this->Internal->DownButtonMode);
+  settings.handle = CusButtonSetting::ButtonDisabled;
+  settings.upHold = CusButtonHoldSetting::ButtonHoldDisabled;
   settings.downHold = CusButtonHoldSetting::ButtonHoldShutdown;
   if (solumSetProbeSettings(&settings) != 0)
   {
@@ -1624,6 +1787,33 @@ PlusStatus vtkPlusClariusOEM::InternalConnect()
   ss << "Pitch: " << probeInfo.pitch << std::endl;
   ss << "Radius: " << probeInfo.radius << "mm" << std::endl;
   LOG_INFO(std::endl << "Probe info: " << std::endl << ss.str());
+
+  char versionStringV1[128] = {};
+  solumFwVersion(CusPlatform::V1, versionStringV1, 128);
+  LOG_DEBUG("Current Clarius V1 firmware version:\t" << versionStringV1);
+  char versionStringHD[128] = {};
+  solumFwVersion(CusPlatform::HD, versionStringHD, 128);
+  LOG_DEBUG("Current Clarius HD firmware version:\t" << versionStringHD);
+  char versionStringHD3[128] = {};
+  solumFwVersion(CusPlatform::HD3, versionStringHD3, 128);
+  LOG_DEBUG("Current Clarius HD3 firmware version:\t" << versionStringHD3);
+
+  if (this->Internal->SoftwareUpdateFilename != "")
+  {
+    CusSwUpdateFn swUpdateFnPtr = static_cast<CusSwUpdateFn>(&vtkPlusClariusOEM::vtkInternal::SwUpdateFn);
+    CusProgressFn progressFnPtr = static_cast<CusProgressFn>(&vtkPlusClariusOEM::vtkInternal::ProgressFn);
+
+    // Hardware version set to 0, unless there is a reason to force the version (1, 2, or 3)
+    if (solumSoftwareUpdate(this->Internal->SoftwareUpdateFilename.c_str(),
+      swUpdateFnPtr, progressFnPtr, this->Internal->SoftwareUpdateHardwareVersion) != 0)
+    {
+      LOG_ERROR("Failed to update Clarius firmware");
+      std::this_thread::sleep_for(std::chrono::milliseconds(CLARIUS_LONG_DELAY_MS));
+      this->InternalDisconnect();
+      return PLUS_FAIL;
+    }
+    return PLUS_SUCCESS;
+  }
 
   // enable the 5v rail on the top of the Clarius probe
   int enable5v = this->Internal->Enable5v ? 1 : 0;
@@ -1660,6 +1850,10 @@ void vtkPlusClariusOEM::DeInitializeOEM()
   LOG_TRACE("vtkPlusClariusOEM::DeInitializeOEM");
 
   int oemState = solumIsConnected();
+  if (oemState == CLARIUS_STATE_NOT_INITIALIZED)
+  {
+    return;
+  }
 
   if (oemState == CLARIUS_STATE_CONNECTED)
   {
@@ -1667,32 +1861,23 @@ void vtkPlusClariusOEM::DeInitializeOEM()
     {
       LOG_WARNING("Failed to disable Clarius 5v");
     }
+
     std::this_thread::sleep_for(std::chrono::milliseconds(CLARIUS_LONG_DELAY_MS));
     if (solumRun(CLARIUS_STOP) < 0)
     {
       LOG_WARNING("Failed to stop Clarius imaging");
     }
+
     std::this_thread::sleep_for(std::chrono::milliseconds(CLARIUS_LONG_DELAY_MS));
     if (solumDisconnect() < 0)
     {
       LOG_WARNING("Failed to disconnect from Clarius OEM library");
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(CLARIUS_LONG_DELAY_MS));
-    if (solumDestroy() < 0)
-    {
-      LOG_WARNING("Failed to destroy Clarius OEM library");
-    }
   }
-  else if (oemState == CLARIUS_STATE_NOT_CONNECTED)
+
+  if (solumDestroy() < 0)
   {
-    if (solumDestroy() < 0)
-    {
-      LOG_WARNING("Failed to destroy Clarius OEM library");
-    }
-  }
-  else if (oemState == CLARIUS_STATE_NOT_INITIALIZED)
-  {
-    // nothing to do here
+    LOG_WARNING("Failed to destroy Clarius OEM library");
   }
 }
 
@@ -1794,9 +1979,6 @@ PlusStatus vtkPlusClariusOEM::UpdateFrameSize()
   videoSource->SetPixelType(VTK_UNSIGNED_CHAR);
   unsigned int numberOfScalarComponents = (videoSource->GetImageType() == US_IMG_RGB_COLOR ? 3 : 1);
   videoSource->SetNumberOfScalarComponents(numberOfScalarComponents);
-  //this->UncompressedVideoFrame.SetImageType(videoSource->GetImageType());
-  //this->UncompressedVideoFrame.SetImageOrientation(videoSource->GetInputImageOrientation());
-  //this->UncompressedVideoFrame.AllocateFrame(currentFrameSize, VTK_UNSIGNED_CHAR, numberOfScalarComponents);
   return PLUS_SUCCESS;
 }
 
@@ -1804,6 +1986,12 @@ PlusStatus vtkPlusClariusOEM::UpdateFrameSize()
 PlusStatus vtkPlusClariusOEM::InternalStopRecording()
 {
   LOG_TRACE("vtkPlusClariusOEM::InternalStopRecording");
+
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
+  {
+    // Not connected, so recording is already stopped.
+    return PLUS_SUCCESS;
+  }
 
   if (solumRun(CLARIUS_STOP) < 0)
   {
@@ -1890,8 +2078,7 @@ PlusStatus vtkPlusClariusOEM::InternalApplyImagingParameterChange()
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::GetDepthMm(double& aDepthMm)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, return cached parameter value
     return this->ImagingParameters->GetDepthMm(aDepthMm);
@@ -1917,8 +2104,7 @@ PlusStatus vtkPlusClariusOEM::GetDepthMm(double& aDepthMm)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::SetDepthMm(double aDepthMm)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, parameter value will be set upon connection
     this->ImagingParameters->SetDepthMm(aDepthMm);
@@ -1944,8 +2130,7 @@ PlusStatus vtkPlusClariusOEM::SetDepthMm(double aDepthMm)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::GetGainPercent(double& aGainPercent)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, return cached parameter value
     return this->ImagingParameters->GetGainPercent(aGainPercent);
@@ -1971,8 +2156,7 @@ PlusStatus vtkPlusClariusOEM::GetGainPercent(double& aGainPercent)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::SetGainPercent(double aGainPercent)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, parameter value will be set upon connection
     this->ImagingParameters->SetGainPercent(aGainPercent);
@@ -1997,8 +2181,7 @@ PlusStatus vtkPlusClariusOEM::SetGainPercent(double aGainPercent)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::GetDynRangePercent(double& aDynRangePercent)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, return cached parameter value
     return this->ImagingParameters->GetDynRangeDb(aDynRangePercent);
@@ -2024,8 +2207,7 @@ PlusStatus vtkPlusClariusOEM::GetDynRangePercent(double& aDynRangePercent)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::SetDynRangePercent(double aDynRangePercent)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, parameter value will be set upon connection
     this->ImagingParameters->SetDynRangeDb(aDynRangePercent);
@@ -2050,8 +2232,7 @@ PlusStatus vtkPlusClariusOEM::SetDynRangePercent(double aDynRangePercent)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::GetTimeGainCompensationDb(std::vector<double>& aTGC)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, return cached parameter value
     return this->ImagingParameters->GetTimeGainCompensation(aTGC);
@@ -2086,8 +2267,7 @@ PlusStatus vtkPlusClariusOEM::SetTimeGainCompensationDb(const std::vector<double
     return PLUS_FAIL;
   }
 
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, parameter value will be set upon connection
     this->ImagingParameters->SetTimeGainCompensation(aTGC);
@@ -2145,8 +2325,7 @@ PlusStatus vtkPlusClariusOEM::SetEnableAutoFocus(bool aEnableAutoFocus)
 {
   this->Internal->EnableAutoFocus = aEnableAutoFocus;
 
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, parameter value will be set upon connection
     LOG_INFO("Cached US parameter AutoFocus = " << aEnableAutoFocus);
@@ -2167,8 +2346,7 @@ PlusStatus vtkPlusClariusOEM::SetEnableAutoFocus(bool aEnableAutoFocus)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::GetEnablePenetrationMode(bool& aEnablePenetrationMode)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, return cached parameter value
     aEnablePenetrationMode = this->Internal->EnablePenetrationMode;
@@ -2198,8 +2376,7 @@ PlusStatus vtkPlusClariusOEM::SetEnablePenetrationMode(bool aEnablePenetrationMo
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::GetFocusDepthPercent(double& aFocusDepthPercent)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, return cached parameter value
     return this->ImagingParameters->GetFocusDepthPercent(aFocusDepthPercent);
@@ -2224,8 +2401,7 @@ PlusStatus vtkPlusClariusOEM::GetFocusDepthPercent(double& aFocusDepthPercent)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::SetFocusDepthPercent(double aFocusDepthPercent)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, parameter value will be set upon connection
     this->ImagingParameters->SetFocusDepthPercent(aFocusDepthPercent);
@@ -2281,8 +2457,7 @@ double vtkPlusClariusOEM::ConvertDepthPercentToCm(double aFocusDepthPercent)
 //-------------------------------------------------------------------------------------------------
 PlusStatus vtkPlusClariusOEM::GetEnableAutoGain(bool& aEnableAutoGain)
 {
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, return cached parameter value
     aEnableAutoGain = this->Internal->EnableAutoGain;
@@ -2298,8 +2473,7 @@ PlusStatus vtkPlusClariusOEM::SetEnableAutoGain(bool aEnableAutoGain)
 {
   this->Internal->EnableAutoGain = aEnableAutoGain;
 
-  int oemState = solumIsConnected();
-  if (oemState != CLARIUS_STATE_CONNECTED)
+  if (solumIsConnected() != CLARIUS_STATE_CONNECTED)
   {
     // Connection has not been established yet, parameter value will be set upon connection
     LOG_INFO("Cached US parameter AutoGain = " << aEnableAutoGain);

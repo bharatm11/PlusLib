@@ -131,6 +131,8 @@ SET(Common_SRCS
   vtkFcsvReader.cxx
   vtkFcsvWriter.cxx
   vtkPlusBuffer.cxx
+  vtkPlusParameters.cxx
+  vtkPlusCameraControlParameters.cxx
   vtkPlusUsImagingParameters.cxx
   )
 SET(Virtual_SRCS
@@ -173,6 +175,8 @@ SET(Common_HDRS
   vtkFcsvReader.h
   vtkFcsvWriter.h
   vtkPlusBuffer.h
+  vtkPlusParameters.h
+  vtkPlusCameraControlParameters.h
   vtkPlusUsImagingParameters.h
   )
 SET(Miscellaneous_HDRS
@@ -494,28 +498,48 @@ IF(PLUS_USE_MICRONTRACKER)
     MicronTrackerInterface
     )
 
-  IF(EXISTS "${MicronTracker_BINARY_DIR}/FlyCapture2${CMAKE_SHARED_LIBRARY_SUFFIX}")
-    # MicronTracker 3.7.x
+  IF(EXISTS "${MicronTracker_BINARY_DIR}/IsgU3VApi${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    # MicronTracker 4.0.x
+    MESSAGE(STATUS "MT4")
+    LIST(APPEND External_Libraries_Install
+      ${MicronTracker_BINARY_DIR}/Ijwhost${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/IsgU3VApi${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/libusb-1.0${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/Log_MD_VC141_v3_2${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/MathParser_MD_VC141_v3_2${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/MtCSharpUtils${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/MTInterfaceDotNet${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/NodeMapData_MD_VC141_v3_2${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/XmlParser_MD_VC141_v3_2${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/GCBase_MD_VC141_v3_2${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/GenApi_MD_VC141_v3_2${CMAKE_SHARED_LIBRARY_SUFFIX}
+      ${MicronTracker_BINARY_DIR}/MTC${CMAKE_SHARED_LIBRARY_SUFFIX}
+      )
+  ELSEIF(EXISTS "${MicronTracker_BINARY_DIR}/FlyCapture2${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    # MicronTracker 3.8.x and 3.9.x
+    MESSAGE(STATUS "MT3.8")
     LIST(APPEND External_Libraries_Install
       ${MicronTracker_BINARY_DIR}/FlyCapture2${CMAKE_SHARED_LIBRARY_SUFFIX}
       ${MicronTracker_BINARY_DIR}/FlyCapture2_C${CMAKE_SHARED_LIBRARY_SUFFIX}
       ${MicronTracker_BINARY_DIR}/libiomp5md${CMAKE_SHARED_LIBRARY_SUFFIX}
       ${MicronTracker_BINARY_DIR}/MTC${CMAKE_SHARED_LIBRARY_SUFFIX}
       ${MicronTracker_BINARY_DIR}/PGRFlyCapture${CMAKE_SHARED_LIBRARY_SUFFIX}
-      ${MicronTracker_BINARY_DIR}/triclops${CMAKE_SHARED_LIBRARY_SUFFIX}
       )
-    IF(EXISTS ${MicronTracker_BINARY_DIR}/digiclops${CMAKE_SHARED_LIBRARY_SUFFIX})
-      LIST(APPEND External_Libraries_Install
-        ${MicronTracker_BINARY_DIR}/digiclops${CMAKE_SHARED_LIBRARY_SUFFIX}
-        )
-    ENDIF()
-    IF(EXISTS ${MicronTracker_BINARY_DIR}/triclops${CMAKE_SHARED_LIBRARY_SUFFIX})
+    IF (EXISTS "${MicronTracker_BINARY_DIR}/triclops${CMAKE_SHARED_LIBRARY_SUFFIX}")
+      # Addition libraries for MicronTracker 3.7.x
+      MESSAGE(STATUS "MT3.7")
       LIST(APPEND External_Libraries_Install
         ${MicronTracker_BINARY_DIR}/triclops${CMAKE_SHARED_LIBRARY_SUFFIX}
         )
+      IF(EXISTS ${MicronTracker_BINARY_DIR}/digiclops${CMAKE_SHARED_LIBRARY_SUFFIX})
+        LIST(APPEND External_Libraries_Install
+        ${MicronTracker_BINARY_DIR}/digiclops${CMAKE_SHARED_LIBRARY_SUFFIX}
+        )
+      ENDIF()
     ENDIF()
   ELSE()
     # MicronTracker 3.6.x
+    MESSAGE(STATUS "MT3.6")
     LIST(APPEND External_Libraries_Install
       ${MicronTracker_BINARY_DIR}/MTC${CMAKE_SHARED_LIBRARY_SUFFIX}
       ${MicronTracker_BINARY_DIR}/Windist/PGRFlyCapture${CMAKE_SHARED_LIBRARY_SUFFIX}

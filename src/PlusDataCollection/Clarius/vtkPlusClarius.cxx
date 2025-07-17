@@ -91,7 +91,7 @@ protected:
   Callback function used when connecting
   Input value is the udpPort.
   */
-  static void ConnectReturnFn(int udpPort, int swRevMatch);
+  static void ConnectReturnFn(int udpPort, int imuPort, int swRevMatch);
 
   /*!
   Callback function for raw data request
@@ -219,7 +219,7 @@ long long int vtkPlusClarius::vtkInternal::SecondsToNanoSeconds(double s)
 }
 
 //----------------------------------------------------------------------------
-void vtkPlusClarius::vtkInternal::ConnectReturnFn(int udpPort, int swRevMatch)
+void vtkPlusClarius::vtkInternal::ConnectReturnFn(int udpPort, int imuPort, int swRevMatch)
 {
   vtkPlusClarius* device = vtkPlusClarius::GetInstance();
   if (device == NULL)
@@ -1173,17 +1173,21 @@ PlusStatus vtkPlusClarius::InternalConnect()
 
     try
     {
-      if (cusCastInit(0, NULL, this->Internal->PathToSecKey.c_str(),
-        processedImageCallbackPtr,
-        rawDataCallBackPtr,
-        nullptr, // ClariusSpectralImageInfo
-        nullptr, // CusNewImuDataFn
-        freezeCallBackFnPtr,
-        buttonCallBackFnPtr,
-        progressCallBackFnPtr,
-        errorCallBackFnPtr,
-        this->FrameWidth,
-        this->FrameHeight) < 0)
+      CusInitParams initParams;
+      initParams.args.argc = 0;
+      initParams.args.argv = nullptr;
+      initParams.storeDir = this->Internal->PathToSecKey.c_str();
+      initParams.newProcessedImageFn = processedImageCallbackPtr;
+      initParams.newRawImageFn = rawDataCallBackPtr;
+      initParams.newSpectralImageFn = nullptr;
+      initParams.newImuDataFn = nullptr;
+      initParams.freezeFn = freezeCallBackFnPtr;
+      initParams.buttonFn = buttonCallBackFnPtr;
+      initParams.progressFn = progressCallBackFnPtr;
+      initParams.errorFn = errorCallBackFnPtr;
+      initParams.width = this->FrameWidth;
+      initParams.height = this->FrameHeight;
+      if (cusCastInit(&initParams) < 0)
       {
         return PLUS_FAIL;
       }
